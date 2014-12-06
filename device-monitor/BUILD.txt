@@ -1,0 +1,1 @@
+gcc src/zone-server.c -o zone-server -I/usr/local/include/zdb -I/usr/include/mysql -I/usr/include /home/jsbruns/workspace/libzdb-2.11.1/.libs/libzdb.a /usr/local/lib/libhttpd.a /usr/lib/i386-linux-gnu/libmysqlclient.a /usr/lib/i386-linux-gnu/libmysqlclient_r.a  -lpthread -lcrypt -lz -lm -ldl

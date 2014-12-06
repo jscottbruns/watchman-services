@@ -1,0 +1,15 @@
+GET /sensors/data/submit?mac=0008E10223D9&alarm=false&info=BufferLevel=0,Latency=0,FrameLoss=0,FrameDup=0,FrameDrop=0,SoftErrorCount=0,StreamNumber=0,Bitrate=0,Reconnects=0,Error=11,Volume=50,UpTime=255,URL= HTTP/1.1
+
+Accept: */*
+
+Host: 10.10.0.60:80
+
+User-Agent: Barix Streaming Client
+
+Cache-Control: no-cache
+
+Pragma: no-cache
+
+Pragma: MAC=00:08:E1:02:23:D9
+
+Connection: Close

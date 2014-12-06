@@ -1,0 +1,19 @@
+# Compiling against static lib for x86 distribution w/o library depencies
+# Step 1&2 may not be needed, if libraries already include .a file
+# Static building for libzdb:
+# $>  gcc mysql-test.c -o mysql-test -I/usr/local/include/zdb -I/usr/include/mysql -I/usr/include .libs/libzdb.a /usr/lib/libmysqlclient.a /usr/lib/libmysqlclient_r.a -lpthread -lcrypt -lz -lm
+# Step 1 - Create intermediary object files (modbus.o, etc) for all library dependencies if needed (i.e. libmodbus, libzdb)
+$> gcc -c -o out.o out.c
+
+# Step 2 - Create static library archive (must be named libXYZ.a where XYZ is source library i.e. libmodbus.a)
+$> ar rcs libout.a out.o
+
+# Step 3 - Compile/Build application w/link to static libraries created above (must provide include path to .h files from each static lib)
+$> gcc -I/path/to/lib/includes test.c -o test /full/path/to/libout.a
+
+# Working gcc command to build modbus-server w/static linking to libmodbus & libzdb
+$> gcc modbus-server.c -o modbus-server -I/home/jsbruns/workspace/Modbus-Server/src -I/usr/local/include/zdb -I/usr/include/mysql -I/usr/include \
+	/home/jsbruns/workspace/Modbus-Server/src/.libs/libmodbus.a \
+	/home/jsbruns/workspace/libzdb-2.11.1/.libs/libzdb.a \
+	/usr/lib/libmysqlclient.a /usr/lib/libmysqlclient_r.a \
+	-lpthread -lcrypt -lz -lm

@@ -1,0 +1,217 @@
+/* vim:set ft=c ts=2 sw=2 sts=2 et cindent: */
+/*
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MIT
+ *
+ * Portions created by Alan Antonuk are Copyright (c) 2012-2013
+ * Alan Antonuk. All Rights Reserved.
+ *
+ * Portions created by VMware are Copyright (c) 2007-2012 VMware, Inc.
+ * All Rights Reserved.
+ *
+ * Portions created by Tony Garnock-Jones are Copyright (c) 2009-2010
+ * VMware, Inc. and Tony Garnock-Jones. All Rights Reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use, copy,
+ * modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ * ***** END LICENSE BLOCK *****
+ */
+
+#include <stdarg.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+
+#include <stdint.h>
+#include <amqp.h>
+#include <amqp_framing.h>
+
+#include "log.h"
+#include "utils.h"
+
+void die(const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fprintf(stderr, "\n");
+  exit(1);
+}
+
+void die_on_error(int x, char const *context, const char* file, int lineno)
+{
+	if (x < 0)
+	{
+		__LOG("%s: %s", file, lineno, E_ERROR, context, amqp_error_string2(x));
+		exit(1);
+	}
+}
+
+int amqp_exception(amqp_rpc_reply_t x, char const *context, const char* file, int lineno)
+{
+	switch (x.reply_type)
+	{
+		case AMQP_RESPONSE_NORMAL:
+			return 0;
+
+		case AMQP_RESPONSE_NONE:
+			__LOG("%s: AMQP response missing RPC reply type", file, lineno, E_ERROR, context);
+			break;
+
+		case AMQP_RESPONSE_LIBRARY_EXCEPTION:
+			__LOG("%s: AMQP response returned library exception (%s)", file, lineno, E_ERROR, context, amqp_error_string2(x.library_error));
+			break;
+
+		case AMQP_RESPONSE_SERVER_EXCEPTION:
+			switch (x.reply.id)
+			{
+				case AMQP_CONNECTION_CLOSE_METHOD:
+				{
+					amqp_connection_close_t *m = (amqp_connection_close_t *) x.reply.decoded;
+					__LOG("%s: AMQP server connection error (%d) %.*s", file, lineno, E_ERROR, context, m->reply_code, (int) m->reply_text.len, (char *) m->reply_text.bytes);
+					break;
+				}
+
+				case AMQP_CHANNEL_CLOSE_METHOD:
+				{
+					amqp_channel_close_t *m = (amqp_channel_close_t *) x.reply.decoded;
+					__LOG("%s: AMQP server channel error (%d) %.*s", file, lineno, E_ERROR, context, m->reply_code, (int) m->reply_text.len, (char *) m->reply_text.bytes);
+					break;
+				}
+
+				default:
+					__LOG("%s: AMQP unknown server error (0x%08X)", file, lineno, E_ERROR, context, x.reply.id);
+					break;
+			}
+			break;
+	}
+
+	return -1;
+}
+
+static void dump_row(long count, int numinrow, int *chs)
+{
+  int i;
+
+  printf("%08lX:", count - numinrow);
+
+  if (numinrow > 0) {
+    for (i = 0; i < numinrow; i++) {
+      if (i == 8) {
+        printf(" :");
+      }
+      printf(" %02X", chs[i]);
+    }
+    for (i = numinrow; i < 16; i++) {
+      if (i == 8) {
+        printf(" :");
+      }
+      printf("   ");
+    }
+    printf("  ");
+    for (i = 0; i < numinrow; i++) {
+      if (isprint(chs[i])) {
+        printf("%c", chs[i]);
+      } else {
+        printf(".");
+      }
+    }
+  }
+  printf("\n");
+}
+
+static int rows_eq(int *a, int *b)
+{
+  int i;
+
+  for (i=0; i<16; i++)
+    if (a[i] != b[i]) {
+      return 0;
+    }
+
+  return 1;
+}
+
+void amqp_dump(void const *buffer, size_t len)
+{
+  unsigned char *buf = (unsigned char *) buffer;
+  long count = 0;
+  int numinrow = 0;
+  int chs[16];
+  int oldchs[16] = {0};
+  int showed_dots = 0;
+  size_t i;
+
+  for (i = 0; i < len; i++) {
+    int ch = buf[i];
+
+    if (numinrow == 16) {
+      int i;
+
+      if (rows_eq(oldchs, chs)) {
+        if (!showed_dots) {
+          showed_dots = 1;
+          printf("          .. .. .. .. .. .. .. .. : .. .. .. .. .. .. .. ..\n");
+        }
+      } else {
+        showed_dots = 0;
+        dump_row(count, numinrow, chs);
+      }
+
+      for (i=0; i<16; i++) {
+        oldchs[i] = chs[i];
+      }
+
+      numinrow = 0;
+    }
+
+    count++;
+    chs[numinrow++] = ch;
+  }
+
+  dump_row(count, numinrow, chs);
+
+  if (numinrow != 0) {
+    printf("%08lX:\n", count);
+  }
+}
+
+int _rand (unsigned int min, unsigned int max)
+{
+	int base_random = rand(); /* in [0, RAND_MAX] */
+	if (RAND_MAX == base_random) return _rand(min, max);
+
+	/* now guaranteed to be in [0, RAND_MAX) */
+	int range       = max - min,
+		remainder   = RAND_MAX % range,
+		bucket      = RAND_MAX / range;
+
+	/* There are range buckets, plus one smaller interval within remainder of RAND_MAX */
+	if (base_random < RAND_MAX - remainder)
+	{
+		return min + base_random/bucket;
+	}
+	else
+	{
+		return _rand (min, max);
+	}
+}
